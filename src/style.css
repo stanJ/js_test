@@ -1,3 +1,9 @@
+@font-face {
+  font-family: 'huangyou';
+  src: url('./huangyou.ttf') format('truetype');
+}
 .hello {
   color: red;
+  font-family: 'huangyou';
+  background: url('./icon.png');
 }
