@@ -1,23 +1,45 @@
 const PENDING = 'pending'
 const FULFILLED = 'fulfilled'
 const REJECTED = 'rejected'
+const PROMISE_ID = Math.random().toString(36).substring(2)
+
+function isObjectOrFunction(x) {
+  let type = typeof x
+  return x !== null && (type === 'object' || type === 'function')
+}
+
+function isFunction(x) {
+  return typeof x === 'function'
+}
+
+let id = 0
+function nextId() {
+  return id++
+}
 
 const resolvePromise = (promise, x) => {
   if (promise === x) {
     return reject(promise, new TypeError('Chaining cycle'))
   }
-  if (x instanceof MyPromise) {
+  if (x && x.constructor === promise.constructor) {
+    // 两种写法 x instanceof MyPromise 和 x.constructor === promise.constructor；需要注意的是：
+    // 后一种必须判断x是否存在 否则会报constructor of undefined的错误
     x.then((v) => {
       resolvePromise(promise, v)
     }, (e) => {
       reject(promise, e)
     })
-  } else if (x !== null && (typeof x === 'object' || typeof x === 'function')) {
+  } else if (isObjectOrFunction(x)) {
     // 函数或对象
     let used = false
+    let then = void 0
     try {
-      const then = x.then
-      if (typeof then === 'function') {
+      then = x.then
+    } catch (e) {
+      return reject(promise, e)
+    }
+    if (isFunction(then)) {
+      try {
         then.call(x, (v) => {
           if (used) return
           used = true
@@ -27,13 +49,13 @@ const resolvePromise = (promise, x) => {
           used = true
           reject(promise, r)
         })
-      } else {
-        resolve(promise, x)
+      } catch (e) {
+        if (used) return
+        used = true
+        reject(promise, e)
       }
-    } catch (e) {
-      if (used) return
-      used = true
-      reject(promise, e)
+    } else {
+      resolve(promise, x)
     }
   } else {
     // 普通值
@@ -49,12 +71,13 @@ function flushSchedule(func) {
 
 function settlePromise(promise, callback, arg) {
   return () => {
+    let x = void 0
     try {
-      let x = callback(arg)
-      resolvePromise(promise, x)
+      x = callback(arg)
     } catch (e) {
-      reject(promise, e)
+      return reject(promise, e)
     }
+    resolvePromise(promise, x)
   }
 }
 
@@ -81,26 +104,7 @@ class MyPromise {
   onFulfilledCallbacks = []
   onRejectedCallbacks = []
   constructor(executor) {
-
-    /**
-     * 如果resolve和reject定义如下，在then方法里把resolve、reject作为参数传递给其他
-     * 函数时，运行测试会报错
-     */
-
-    // const resolve = (value) => {
-    //   if (this.state === PENDING) {
-    //     this.state = FULFILLED
-    //     this.value = value
-    //     this.onFulfilledCallbacks.forEach(fn => fn())
-    //   }
-    // }
-    // const reject = (reason) => {
-    //   if (this.state === PENDING) {
-    //     this.state = REJECTED
-    //     this.reason = reason
-    //     this.onRejectedCallbacks.forEach(fn => fn())
-    //   }
-    // }
+    this[PROMISE_ID] = nextId()
     try {
       executor((value) => {
         resolve(this, value);
@@ -134,6 +138,7 @@ class MyPromise {
   }
 }
 
+// promises-aplus-tests测试MyPromise的测试代码
 MyPromise.defer = MyPromise.deferred = function () {
   let dfd = {}
   dfd.promise = new MyPromise((resolve, reject) => {
